@@ -37,8 +37,7 @@ Not decided yet, so the build uses placeholders that are easy to change:
 
 - The host app already handles `closeWebviewWithResult` on the `observer`
   message handler: it closes the web view and passes `result` to the caller.
-  This matches `miniapp-flutter-jsbridge-webdemo/lib/bridge/native_bridge.dart`,
-  which sends the same payload.
+  This matches the existing mini-app web demo, which sends the same payload.
 - The host app can be changed to make the web view transparent (see "Native
   host requirements"). Without those settings the area outside the dialog is
   white, whatever the CSS says.
