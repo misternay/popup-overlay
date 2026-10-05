@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Popup overlay tests</title>
+<style>
+  body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; margin: 16px; }
+  #result { font-weight: 600; }
+  .pass { color: #1B7F3B; }
+  .fail { color: #B3261E; }
+  #frames { position: absolute; left: -10000px; top: 0; }
+  iframe { display: block; border: 0; }
+</style>
+</head>
+<body>
+<h1>Popup overlay tests</h1>
+<p id="result">Running</p>
+<ul id="log"></ul>
+<div id="frames"></div>
+<script>
+var tests = [];
+function test(name, fn) { tests.push({ name: name, fn: fn }); }
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function assertEqual(actual, expected, message) {
+  var a = JSON.stringify(actual);
+  var e = JSON.stringify(expected);
+  if (a !== e) throw new Error(message + ': expected ' + e + ', got ' + a);
+}
+
+var frameCount = 0;
+
+// Loads a fresh copy of the popup in an iframe of the given size.
+function loadPopup(width, height) {
+  return new Promise(function (resolve, reject) {
+    var frame = document.createElement('iframe');
+    frame.width = width || 375;
+    frame.height = height || 667;
+    frame.onload = function () {
+      var win = frame.contentWindow;
+      var doc = win.document;
+      var popup = {
+        win: win,
+        doc: doc,
+        backdrop: doc.getElementById('backdrop'),
+        card: doc.getElementById('card'),
+        title: doc.getElementById('popup-title'),
+        message: doc.getElementById('popup-message'),
+        ok: doc.getElementById('btn-ok'),
+        cancel: doc.getElementById('btn-cancel'),
+        errors: []
+      };
+      win.addEventListener('error', function (event) { popup.errors.push(event.message); });
+      resolve(popup);
+    };
+    frame.onerror = reject;
+    frame.src = '../index.html?run=' + (frameCount++);
+    document.getElementById('frames').appendChild(frame);
+  });
+}
+
+// Turns animations off so getBoundingClientRect is not affected by the entrance scale.
+function freeze(popup) {
+  var style = popup.doc.createElement('style');
+  style.textContent = '*, *::before, *::after { animation: none !important; }';
+  popup.doc.head.appendChild(style);
+}
+
+function mockIos(win) {
+  var calls = [];
+  Object.defineProperty(win, 'webkit', {
+    configurable: true,
+    value: { messageHandlers: { observer: { postMessage: function (body) { calls.push(body); } } } }
+  });
+  return calls;
+}
+
+function mockAndroid(win) {
+  var calls = [];
+  win.JSBridge = { closeWebviewWithResult: function (json) { calls.push(json); } };
+  return calls;
+}
+
+function pressEscape(popup) {
+  popup.doc.dispatchEvent(new popup.win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+}
+
+var LONG_MESSAGE = new Array(60).join('This is a long message. ');
+
+test('OK sends "ok" to the iOS handler exactly once', async function () {
+  var p = await loadPopup();
+  var calls = mockIos(p.win);
+  p.ok.click();
+  assertEqual(calls, [{ name: 'closeWebviewWithResult', result: 'ok' }], 'iOS messages');
+});
+
+test('Cancel sends "cancel"', async function () {
+  var p = await loadPopup();
+  var calls = mockIos(p.win);
+  p.cancel.click();
+  assertEqual(calls, [{ name: 'closeWebviewWithResult', result: 'cancel' }], 'iOS messages');
+});
+
+test('A tap on the backdrop sends "cancel"', async function () {
+  var p = await loadPopup();
+  var calls = mockIos(p.win);
+  p.backdrop.click();
+  assertEqual(calls, [{ name: 'closeWebviewWithResult', result: 'cancel' }], 'iOS messages');
+});
+
+test('A tap inside the card sends nothing', async function () {
+  var p = await loadPopup();
+  var calls = mockIos(p.win);
+  p.card.click();
+  p.title.click();
+  p.message.click();
+  assertEqual(calls, [], 'iOS messages');
+});
+
+test('Escape sends "cancel"', async function () {
+  var p = await loadPopup();
+  var calls = mockIos(p.win);
+  pressEscape(p);
+  assertEqual(calls, [{ name: 'closeWebviewWithResult', result: 'cancel' }], 'iOS messages');
+});
+
+test('Only the first action sends a message', async function () {
+  var p = await loadPopup();
+  var calls = mockIos(p.win);
+  p.ok.click();
+  p.ok.click();
+  p.cancel.click();
+  p.backdrop.click();
+  pressEscape(p);
+  assertEqual(calls, [{ name: 'closeWebviewWithResult', result: 'ok' }], 'iOS messages');
+});
+
+test('Android receives one JSON string and the iOS handler is skipped', async function () {
+  var p = await loadPopup();
+  var android = mockAndroid(p.win);
+  var ios = mockIos(p.win);
+  p.ok.click();
+  assertEqual(android, ['{"name":"closeWebviewWithResult","result":"ok"}'], 'Android calls');
+  assertEqual(ios, [], 'iOS messages');
+});
+
+test('An Android bridge without the method does not throw', async function () {
+  var p = await loadPopup();
+  p.win.JSBridge = {};
+  var ios = mockIos(p.win);
+  p.ok.click();
+  assertEqual(p.errors, [], 'errors');
+  assertEqual(ios, [], 'iOS messages');
+});
+
+test('A missing bridge does not throw and the popup still fades out', async function () {
+  var p = await loadPopup();
+  p.ok.click();
+  assertEqual(p.errors, [], 'errors');
+  assert(p.backdrop.classList.contains('closing'), 'backdrop has no closing class');
+});
+
+test('webkit without the observer handler does not throw', async function () {
+  var p = await loadPopup();
+  Object.defineProperty(p.win, 'webkit', { configurable: true, value: { messageHandlers: {} } });
+  p.cancel.click();
+  assertEqual(p.errors, [], 'errors');
+});
+
+test('window.bridge exists after closing and is not replaced', async function () {
+  var first = await loadPopup();
+  first.ok.click();
+  assert(first.win.bridge !== null && typeof first.win.bridge === 'object', 'window.bridge was not created');
+
+  var second = await loadPopup();
+  second.win.bridge = { keep: 1 };
+  second.ok.click();
+  assertEqual(second.win.bridge.keep, 1, 'existing window.bridge');
+});
+
+test('The dialog is described for VoiceOver and takes focus', async function () {
+  var p = await loadPopup();
+  assertEqual(p.card.getAttribute('role'), 'alertdialog', 'role');
+  assertEqual(p.card.getAttribute('aria-modal'), 'true', 'aria-modal');
+  assertEqual(p.card.getAttribute('aria-labelledby'), 'popup-title', 'aria-labelledby');
+  assertEqual(p.card.getAttribute('aria-describedby'), 'popup-message', 'aria-describedby');
+  assert(p.title.textContent.trim().length > 0, 'title is empty');
+  assert(p.message.textContent.trim().length > 0, 'message is empty');
+  assertEqual(p.ok.tagName + '/' + p.cancel.tagName, 'BUTTON/BUTTON', 'button elements');
+  assert(p.doc.activeElement === p.card, 'the card is not focused');
+});
+
+test('The page and the area outside the card are see-through', async function () {
+  var p = await loadPopup();
+  var style = function (element) { return p.win.getComputedStyle(element); };
+  assertEqual(style(p.doc.documentElement).backgroundColor, 'rgba(0, 0, 0, 0)', 'html background');
+  assertEqual(style(p.doc.body).backgroundColor, 'rgba(0, 0, 0, 0)', 'body background');
+  assertEqual(style(p.backdrop).backgroundColor, 'rgba(0, 0, 0, 0.4)', 'backdrop background');
+  assertEqual([p.backdrop.offsetWidth, p.backdrop.offsetHeight], [375, 667], 'backdrop size');
+});
+
+test('The card is centred with 24px margins on a 375px screen', async function () {
+  var p = await loadPopup(375, 667);
+  assertEqual(p.card.offsetWidth, 327, 'card width');
+  assertEqual(p.card.offsetLeft, 24, 'left margin');
+  var expectedTop = (667 - p.card.offsetHeight) / 2;
+  assert(Math.abs(p.card.offsetTop - expectedTop) <= 1, 'card top is ' + p.card.offsetTop + ', expected ' + expectedTop);
+});
+
+test('The card narrows on a 320px screen', async function () {
+  var p = await loadPopup(320, 568);
+  assertEqual(p.card.offsetWidth, 272, 'card width');
+  assertEqual(p.card.offsetLeft, 24, 'left margin');
+});
+
+test('The card stops at 327px on a wide screen', async function () {
+  var p = await loadPopup(768, 1024);
+  assertEqual(p.card.offsetWidth, 327, 'card width');
+  assert(Math.abs(p.card.offsetLeft - (768 - 327) / 2) <= 1, 'card left is ' + p.card.offsetLeft);
+});
+
+test('Buttons sit side by side with equal width, Cancel on the left', async function () {
+  var p = await loadPopup();
+  freeze(p);
+  var cancel = p.cancel.getBoundingClientRect();
+  var ok = p.ok.getBoundingClientRect();
+  assert(Math.abs(cancel.top - ok.top) <= 0.1, 'buttons are not on the same row');
+  assert(cancel.left < ok.left, 'Cancel is not left of OK');
+  assert(Math.abs(cancel.width - ok.width) <= 0.1, 'widths differ: ' + cancel.width + ' and ' + ok.width);
+  assert(Math.abs(ok.left - cancel.right - 12) <= 0.1, 'space between buttons is ' + (ok.left - cancel.right));
+  assert(cancel.height >= 48 && ok.height >= 48, 'buttons are shorter than 48px');
+});
+
+test('A label that does not fit stacks the buttons with OK on top', async function () {
+  var p = await loadPopup();
+  freeze(p);
+  p.ok.textContent = 'Yes, continue with this request';
+  var cancel = p.cancel.getBoundingClientRect();
+  var ok = p.ok.getBoundingClientRect();
+  var card = p.card.getBoundingClientRect();
+  assert(ok.bottom <= cancel.top, 'OK is not above Cancel');
+  assert(Math.abs(cancel.width - ok.width) <= 0.1, 'stacked widths differ');
+  assert(ok.left >= card.left && ok.right <= card.right, 'OK overflows the card');
+});
+
+test('A long message scrolls inside the card and the buttons stay on screen', async function () {
+  var p = await loadPopup(375, 420);
+  freeze(p);
+  p.message.textContent = LONG_MESSAGE;
+  var card = p.card.getBoundingClientRect();
+  var ok = p.ok.getBoundingClientRect();
+  assert(card.top >= 23.5 && card.bottom <= 420 - 23.5, 'card spans ' + card.top + ' to ' + card.bottom);
+  assert(p.message.scrollHeight > p.message.clientHeight, 'the message does not scroll');
+  assert(ok.bottom <= card.bottom, 'buttons are pushed out of the card');
+});
+
+test('Dragging does not scroll the page, but a long message can scroll', async function () {
+  var p = await loadPopup(375, 420);
+  var dragIsBlocked = function (element) {
+    var event = new p.win.Event('touchmove', { bubbles: true, cancelable: true });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  assertEqual(dragIsBlocked(p.backdrop), true, 'drag on the backdrop');
+  assertEqual(dragIsBlocked(p.ok), true, 'drag on a button');
+  assertEqual(dragIsBlocked(p.message), true, 'drag on a short message');
+  p.message.textContent = LONG_MESSAGE;
+  assertEqual(dragIsBlocked(p.message), false, 'drag on a long message');
+});
+
+test('The page avoids features newer than iOS 13', async function () {
+  var response = await fetch('../index.html');
+  assert(response.ok, 'index.html was not found');
+  var source = await response.text();
+  var banned = [
+    [/\?\.[A-Za-z_$(\[]/, 'optional chaining'],
+    [/\?\?/, 'nullish coalescing'],
+    [/\binset\s*:/, 'CSS inset'],
+    [/\d(dvh|svh|lvh)\b/, 'dynamic viewport units'],
+    [/[;{\s]gap\s*:/, 'flexbox gap'],
+    [/color-mix\(/, 'color-mix()'],
+    [/:has\(/, ':has()'],
+    [/name="color-scheme"/, 'the color-scheme meta tag']
+  ];
+  banned.forEach(function (rule) {
+    assert(!rule[0].test(source), 'index.html uses ' + rule[1]);
+  });
+});
+
+(async function run() {
+  var log = document.getElementById('log');
+  var passed = 0;
+  for (var i = 0; i < tests.length; i++) {
+    var item = document.createElement('li');
+    try {
+      await tests[i].fn();
+      passed++;
+      item.className = 'pass';
+      item.textContent = 'PASS: ' + tests[i].name;
+    } catch (error) {
+      item.className = 'fail';
+      item.textContent = 'FAIL: ' + tests[i].name + ' (' + error.message + ')';
+    }
+    log.appendChild(item);
+  }
+  document.getElementById('frames').innerHTML = '';
+  var allPassed = passed === tests.length;
+  var result = document.getElementById('result');
+  result.className = allPassed ? 'pass' : 'fail';
+  result.textContent = 'RESULT: ' + (allPassed ? 'PASS' : 'FAIL') + ' ' + passed + '/' + tests.length;
+})();
+</script>
+</body>
+</html>

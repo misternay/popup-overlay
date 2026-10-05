@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<title>Confirm</title>
+<style>
+  /* Brand colour: change --accent only. */
+  :root {
+    --accent: #185FA5;
+    --card: #FFFFFF;
+    --title: #1A1A1A;
+    --message: #5F6368;
+    --cancel-bg: #EEEFF1;
+    --cancel-fg: #1A1A1A;
+    --backdrop: rgba(0, 0, 0, 0.4);
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    height: 100%;
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 17px;
+    /* On iOS this follows the user's text size setting. Other browsers ignore it and keep 17px. */
+    font: -apple-system-body;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+
+  .backdrop {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    padding: calc(24px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
+    background: var(--backdrop);
+    /* iOS only sends taps to elements it treats as clickable. */
+    cursor: pointer;
+    animation: backdrop-in 200ms ease-out both;
+  }
+
+  .backdrop.closing {
+    pointer-events: none;
+    animation: backdrop-out 150ms ease-in both;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 327px;
+    max-height: 100%;
+    padding: 24px 20px 20px;
+    border-radius: 20px;
+    background: var(--card);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+    text-align: center;
+    cursor: default;
+    outline: none;
+    animation: card-in 200ms ease-out both;
+  }
+
+  .icon {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 12px;
+    color: var(--accent);
+  }
+
+  /* A light tint of the accent colour behind the icon. */
+  .icon::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.12;
+  }
+
+  .icon svg {
+    position: relative;
+    width: 26px;
+    height: 26px;
+  }
+
+  .title {
+    flex: none;
+    margin: 0;
+    font-size: 1.0588rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--title);
+  }
+
+  /* Scrolls inside the card when large text makes the card taller than the screen. */
+  .message {
+    flex: 0 1 auto;
+    min-height: 0;
+    margin: 8px 0 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.8824rem;
+    line-height: 1.5;
+    color: var(--message);
+  }
+
+  /* Margins give the 12px space between buttons. wrap-reverse puts OK on top when a label does not fit. */
+  .actions {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap-reverse;
+    margin: 20px -6px -12px;
+  }
+
+  .btn {
+    flex: 1 0 calc(50% - 12.5px);
+    min-height: 48px;
+    margin: 0 6px 12px;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 0.9412rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: opacity 120ms ease-out, transform 120ms ease-out;
+  }
+
+  .btn-cancel {
+    background: var(--cancel-bg);
+    color: var(--cancel-fg);
+  }
+
+  .btn-ok {
+    background: var(--accent);
+    color: #FFFFFF;
+  }
+
+  .btn:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  @keyframes backdrop-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes backdrop-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  @keyframes card-in {
+    from { transform: scale(0.94); }
+    to { transform: scale(1); }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --card: #2A2B2F;
+      --title: #FFFFFF;
+      --message: #B4B6BB;
+      --cancel-bg: #3A3B40;
+      --cancel-fg: #FFFFFF;
+    }
+
+    .icon {
+      color: #FFFFFF;
+    }
+
+    .icon::before {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card {
+      animation: none;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="backdrop" id="backdrop">
+    <div class="card" id="card" role="alertdialog" aria-modal="true" aria-labelledby="popup-title" aria-describedby="popup-message" tabindex="-1">
+      <!-- Optional icon: delete this block to remove it. -->
+      <div class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <path d="M12 17h.01"/>
+        </svg>
+      </div>
+      <!-- Text: edit the title, message and button labels here. -->
+      <h1 class="title" id="popup-title">Confirm your request</h1>
+      <p class="message" id="popup-message">Do you want to continue? You can't undo this later.</p>
+      <div class="actions">
+        <button type="button" class="btn btn-cancel" id="btn-cancel">Cancel</button>
+        <button type="button" class="btn btn-ok" id="btn-ok">OK</button>
+      </div>
+    </div>
+  </div>
+<script>
+(function () {
+  'use strict';
+
+  var RESULT_OK = 'ok';
+  var RESULT_CANCEL = 'cancel';
+
+  function closeWebviewWithResult(result) {
+    var obj = {
+      name: 'closeWebviewWithResult',
+      result: result
+    };
+
+    if (!window.bridge) {
+      window.bridge = {};
+    }
+
+    if (window.JSBridge) {
+      // android
+      if (typeof window.JSBridge.closeWebviewWithResult === 'function') {
+        window.JSBridge.closeWebviewWithResult(JSON.stringify(obj));
+      }
+    } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.observer) {
+      // ios
+      window.webkit.messageHandlers.observer.postMessage(obj);
+    } else {
+      // No native bridge, for example a desktop browser.
+      console.log('[PopupOverlay] closeWebviewWithResult', obj);
+    }
+  }
+
+  var backdrop = document.getElementById('backdrop');
+  var card = document.getElementById('card');
+  var message = document.getElementById('popup-message');
+  var closed = false;
+
+  // Sends the result once, then fades out. Later taps do nothing.
+  function close(result) {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    closeWebviewWithResult(result);
+    backdrop.className += ' closing';
+  }
+
+  document.getElementById('btn-ok').addEventListener('click', function () {
+    close(RESULT_OK);
+  });
+
+  document.getElementById('btn-cancel').addEventListener('click', function () {
+    close(RESULT_CANCEL);
+  });
+
+  // Only a tap on the backdrop itself counts as "outside", not a tap inside the card.
+  backdrop.addEventListener('click', function (event) {
+    if (event.target === backdrop) {
+      close(RESULT_CANCEL);
+    }
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' || event.keyCode === 27) {
+      close(RESULT_CANCEL);
+    }
+  });
+
+  // Stop the page from rubber-banding when dragged. A message that overflows may still scroll.
+  document.addEventListener('touchmove', function (event) {
+    var messageScrolls = message.scrollHeight > message.clientHeight;
+    if (!(messageScrolls && message.contains(event.target))) {
+      event.preventDefault();
+    }
+  }, { passive: false });
+
+  // iOS only applies :active styles when a touch listener exists.
+  document.addEventListener('touchstart', function () {}, { passive: true });
+
+  card.focus();
+})();
+</script>
+</body>
+</html>
