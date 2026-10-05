@@ -396,7 +396,8 @@ done
 DOM=$("$CHROME" --headless=new --disable-gpu --virtual-time-budget=20000 \
   --dump-dom "http://localhost:$PORT/tests/popup.test.html" 2>/dev/null)
 
-echo "$DOM" | grep -o 'FAIL: [^<]*'
+# Match the failed log items only, not the same text in the test page's own script.
+echo "$DOM" | grep -o '<li class="fail">[^<]*' | sed 's/<[^>]*>//'
 RESULT=$(echo "$DOM" | grep -o 'RESULT: [A-Z]* [0-9]*/[0-9]*')
 echo "${RESULT:-RESULT: FAIL (the test page did not finish)}"
 [[ "$RESULT" == RESULT:\ PASS* ]]
